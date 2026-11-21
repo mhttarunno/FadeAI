@@ -10,7 +10,6 @@ Routes:
     POST /api/detect-objects          -> smart object detection (COCO 80 categories)
     POST /api/remove-background       -> background remover (transparent PNG)
     POST /api/enhance-image           -> 2x/4x super-resolution, sharpen & denoise
-    POST /api/batch-process           -> batch multi-image processing & zip creation
     GET  /api/history                 -> recent editing history
     POST /api/history/save            -> save history item
     POST /api/history/clear           -> clear all editing history
@@ -41,7 +40,6 @@ from werkzeug.exceptions import RequestEntityTooLarge
 
 from config import config_map
 from services.background_service import remove_background
-from services.batch_service import create_batch_zip
 from services.detection_service import detect_objects
 from services.enhancement_service import enhance_image
 from services.history_and_stats_service import (
@@ -300,69 +298,6 @@ def create_app(env: str = None) -> Flask:
             return jsonify({"success": False, "error": "Image enhancement failed."}), 500
 
     # ------------------------------------------------------------------
-    # Feature 6: Batch Processing
-    # ------------------------------------------------------------------
-
-    @app.route("/api/batch-process", methods=["POST"])
-    def batch_process_route():
-        """Process multiple images in a batch and package results into a ZIP."""
-        start_time = time.time()
-        try:
-            files = request.files.getlist("images")
-            operation = request.form.get("operation", "remove_background")  # "remove_background" | "enhance"
-
-            if not files or len(files) == 0:
-                return jsonify({"success": False, "error": "No images provided for batch processing."}), 400
-
-            upload_folder = Path(app.config["UPLOAD_FOLDER"]).resolve()
-            results_dir = Path(app.config["RESULT_FOLDER"]).resolve()
-
-            processed_items = []
-            result_paths = []
-
-            for f in files:
-                if not f.filename:
-                    continue
-                saved_source = save_upload(f, upload_folder)
-                res_path = None
-                res_name = None
-
-                if operation == "remove_background":
-                    res_path, res_name = remove_background(saved_source, results_dir)
-                elif operation == "enhance":
-                    res_path, res_name = enhance_image(saved_source, results_dir, scale=2)
-                else:
-                    # Default: background removal
-                    res_path, res_name = remove_background(saved_source, results_dir)
-
-                if res_path and res_path.exists():
-                    result_paths.append(res_path)
-                    processed_items.append({
-                        "original_filename": saved_source.name,
-                        "result_filename": res_name,
-                        "result_url": f"/static/results/{res_name}",
-                    })
-
-            if not result_paths:
-                return jsonify({"success": False, "error": "None of the images could be processed."}), 400
-
-            zip_path, zip_filename = create_batch_zip(result_paths, results_dir, batch_prefix=f"batch_{operation}")
-            elapsed = round(time.time() - start_time, 2)
-            record_action("batch_process", f"{len(files)}_images", zip_filename, elapsed, {"operation": operation, "count": len(result_paths)})
-
-            return jsonify({
-                "success": True,
-                "count": len(processed_items),
-                "items": processed_items,
-                "zip_url": f"/static/results/{zip_filename}",
-                "zip_filename": zip_filename,
-                "processing_time_seconds": elapsed,
-            })
-        except Exception as exc:
-            logger.error("Batch processing failed:\n%s", traceback.format_exc())
-            return jsonify({"success": False, "error": f"Batch processing failed: {str(exc)}"}), 500
-
-    # ------------------------------------------------------------------
     # Features 7 & 10: History & Usage Dashboard
     # ------------------------------------------------------------------
 
@@ -451,12 +386,16 @@ def create_app(env: str = None) -> Flask:
                     "smart_object_detection",
                     "background_remover",
                     "image_enhancement",
-                    "batch_processing",
                     "editing_history",
                     "usage_dashboard",
                 ],
             }
         )
+
+    @app.route("/favicon.ico")
+    def favicon():
+        """Handle browser favicon request cleanly without 404."""
+        return ("", 204)
 
     # ------------------------------------------------------------------
     # Error handlers

@@ -90,24 +90,6 @@
         beforeImage: document.getElementById("beforeImage"),
         afterImage: document.getElementById("afterImage"),
 
-        // New Features Elements
-        singleModeTab: document.getElementById("singleModeTab"),
-        batchModeTab: document.getElementById("batchModeTab"),
-        dropZoneContainer: document.getElementById("dropZoneContainer"),
-        batchZoneContainer: document.getElementById("batchZoneContainer"),
-        batchDropZone: document.getElementById("batchDropZone"),
-        batchFileInput: document.getElementById("batchFileInput"),
-        batchBrowseBtn: document.getElementById("batchBrowseBtn"),
-        batchOperationSelect: document.getElementById("batchOperationSelect"),
-        batchQueueWrapper: document.getElementById("batchQueueWrapper"),
-        batchCountBadge: document.getElementById("batchCountBadge"),
-        clearBatchBtn: document.getElementById("clearBatchBtn"),
-        batchItemsList: document.getElementById("batchItemsList"),
-        batchProgressWrapper: document.getElementById("batchProgressWrapper"),
-        batchProgressBar: document.getElementById("batchProgressBar"),
-        startBatchProcessBtn: document.getElementById("startBatchProcessBtn"),
-        downloadBatchZipBtn: document.getElementById("downloadBatchZipBtn"),
-
         smartDetectBtn: document.getElementById("smartDetectBtn"),
         removeBgBtn: document.getElementById("removeBgBtn"),
         enhanceModalBtn: document.getElementById("enhanceModalBtn"),
@@ -133,6 +115,7 @@
         historyListContainer: document.getElementById("historyListContainer"),
         clearHistoryBtn: document.getElementById("clearHistoryBtn"),
         historyCountBadge: document.getElementById("historyCountBadge"),
+        themeToggleBtn: document.getElementById("themeToggleBtn"),
     };
 
     // ---------------------------------------------------------------------
@@ -1322,153 +1305,7 @@
     }
 
     // ---------------------------------------------------------------------
-    // Feature 6: Batch Processing
-    // ---------------------------------------------------------------------
-    let batchFilesQueue = [];
-
-    function initBatchProcessing() {
-        if (el.singleModeTab && el.batchModeTab) {
-            el.singleModeTab.addEventListener("click", () => {
-                el.singleModeTab.classList.add("active-tab-btn");
-                el.singleModeTab.classList.remove("text-secondary");
-                el.batchModeTab.classList.remove("active-tab-btn");
-                el.batchModeTab.classList.add("text-secondary");
-                el.dropZoneContainer.classList.remove("d-none");
-                el.batchZoneContainer.classList.add("d-none");
-            });
-
-            el.batchModeTab.addEventListener("click", () => {
-                el.batchModeTab.classList.add("active-tab-btn");
-                el.batchModeTab.classList.remove("text-secondary");
-                el.singleModeTab.classList.remove("active-tab-btn");
-                el.singleModeTab.classList.add("text-secondary");
-                el.batchZoneContainer.classList.remove("d-none");
-                el.dropZoneContainer.classList.add("d-none");
-            });
-        }
-
-        if (el.batchBrowseBtn && el.batchFileInput) {
-            el.batchBrowseBtn.addEventListener("click", () => el.batchFileInput.click());
-            el.batchFileInput.addEventListener("change", () => {
-                if (el.batchFileInput.files.length) {
-                    addFilesToBatchQueue(Array.from(el.batchFileInput.files));
-                }
-            });
-        }
-
-        if (el.batchDropZone) {
-            ["dragenter", "dragover"].forEach((evt) => {
-                el.batchDropZone.addEventListener(evt, (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    el.batchDropZone.classList.add("drag-over");
-                });
-            });
-
-            ["dragleave", "drop"].forEach((evt) => {
-                el.batchDropZone.addEventListener(evt, (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    el.batchDropZone.classList.remove("drag-over");
-                });
-            });
-
-            el.batchDropZone.addEventListener("drop", (e) => {
-                const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
-                if (files.length) addFilesToBatchQueue(files);
-            });
-        }
-
-        if (el.clearBatchBtn) {
-            el.clearBatchBtn.addEventListener("click", () => {
-                batchFilesQueue = [];
-                renderBatchQueue();
-            });
-        }
-
-        if (el.startBatchProcessBtn) {
-            el.startBatchProcessBtn.addEventListener("click", processBatchQueue);
-        }
-    }
-
-    function addFilesToBatchQueue(newFiles) {
-        batchFilesQueue = [...batchFilesQueue, ...newFiles].slice(0, 20); // max 20
-        renderBatchQueue();
-    }
-
-    function renderBatchQueue() {
-        if (!el.batchQueueWrapper || !el.batchItemsList) return;
-
-        if (!batchFilesQueue.length) {
-            el.batchQueueWrapper.classList.add("d-none");
-            return;
-        }
-
-        el.batchQueueWrapper.classList.remove("d-none");
-        el.batchCountBadge.textContent = `${batchFilesQueue.length} files queued`;
-        el.batchItemsList.innerHTML = "";
-
-        batchFilesQueue.forEach((file, idx) => {
-            const item = document.createElement("div");
-            item.className = "d-flex justify-content-between align-items-center p-2 rounded-3 bg-white border small";
-            item.innerHTML = `
-                <div class="d-flex align-items-center gap-2 text-truncate" style="max-width: 75%;">
-                    <i class="bi bi-file-earmark-image text-primary"></i>
-                    <span class="text-truncate fw-medium">${file.name}</span>
-                </div>
-                <span class="text-muted">${Math.round(file.size / 1024)} KB</span>
-            `;
-            el.batchItemsList.appendChild(item);
-        });
-
-        if (el.downloadBatchZipBtn) {
-            el.downloadBatchZipBtn.classList.add("d-none");
-        }
-    }
-
-    async function processBatchQueue() {
-        if (!batchFilesQueue.length) return;
-
-        const operation = el.batchOperationSelect ? el.batchOperationSelect.value : "remove_background";
-        const formData = new FormData();
-        batchFilesQueue.forEach((file) => formData.append("images", file));
-        formData.append("operation", operation);
-
-        if (el.batchProgressWrapper) el.batchProgressWrapper.classList.remove("d-none");
-        if (el.batchProgressBar) el.batchProgressBar.style.width = "40%";
-        if (el.startBatchProcessBtn) el.startBatchProcessBtn.disabled = true;
-
-        try {
-            const response = await fetch("/api/batch-process", { method: "POST", body: formData });
-            const data = await response.json();
-
-            if (!response.ok || !data.success) {
-                throw new Error(data.error || "Batch processing failed.");
-            }
-
-            if (el.batchProgressBar) el.batchProgressBar.style.width = "100%";
-            showAlert(`Batch complete! Processed ${data.count} images.`, "success");
-
-            if (el.downloadBatchZipBtn) {
-                el.downloadBatchZipBtn.classList.remove("d-none");
-                el.downloadBatchZipBtn.onclick = () => {
-                    window.location.href = data.zip_url;
-                };
-            }
-
-            if (typeof confetti === "function") {
-                confetti({ particleCount: 50, spread: 80, origin: { y: 0.6 } });
-            }
-        } catch (err) {
-            console.error(err);
-            showAlert(err.message || "Batch process failed.");
-        } finally {
-            if (el.startBatchProcessBtn) el.startBatchProcessBtn.disabled = false;
-        }
-    }
-
-    // ---------------------------------------------------------------------
-    // Feature 8: Advanced Comparison Views
+    // Feature 7: Advanced Comparison Views
     // ---------------------------------------------------------------------
     function initAdvancedComparison() {
         if (el.sliderViewBtn && el.sideBySideViewBtn) {
@@ -1766,7 +1603,16 @@
 
         // 4. Keyboard shortcuts (B for brush, L for lasso, [ and ] for brush size)
         document.addEventListener("keydown", (e) => {
-            if (["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) return;
+            if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement.tagName)) return;
+
+            // Global shortcut: Shift + D to toggle Theme
+            if (e.key.toLowerCase() === "d" && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                e.preventDefault();
+                const toggleBtn = el.themeToggleBtn || document.getElementById("themeToggleBtn");
+                if (toggleBtn) toggleBtn.click();
+                return;
+            }
+
             if (el.editorSection.classList.contains("d-none")) return;
 
             if (e.key.toLowerCase() === "b" && !e.ctrlKey && !e.metaKey) {
@@ -1786,15 +1632,69 @@
     }
 
     // ---------------------------------------------------------------------
+    // Feature: Dark & Light Mode Theme Toggle
+    // ---------------------------------------------------------------------
+    function initThemeToggle() {
+        const toggleBtn = el.themeToggleBtn || document.getElementById("themeToggleBtn");
+        const modeText = toggleBtn ? toggleBtn.querySelector(".theme-mode-text") : null;
+
+        function applyTheme(theme) {
+            const isDark = theme === "dark";
+            document.documentElement.setAttribute("data-bs-theme", theme);
+            document.documentElement.setAttribute("data-theme", theme);
+
+            // Update mobile status bar theme-color
+            const metaThemeColor = document.querySelector('meta[name="theme-color"]');
+            if (metaThemeColor) {
+                metaThemeColor.setAttribute("content", isDark ? "#090d16" : "#6366f1");
+            }
+
+            if (toggleBtn) {
+                toggleBtn.setAttribute("data-active-theme", theme);
+                toggleBtn.setAttribute("title", isDark ? "Switch to Light Mode (Shift+D)" : "Switch to Dark Mode (Shift+D)");
+                toggleBtn.setAttribute("aria-label", isDark ? "Switch to Light Mode" : "Switch to Dark Mode");
+            }
+
+            if (modeText) {
+                modeText.textContent = isDark ? "Light" : "Dark";
+            }
+        }
+
+        // Determine current initial theme
+        const savedTheme = localStorage.getItem("vanishai_theme");
+        const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
+        applyTheme(initialTheme);
+
+        if (toggleBtn) {
+            toggleBtn.addEventListener("click", () => {
+                const current = document.documentElement.getAttribute("data-theme") || "light";
+                const nextTheme = current === "dark" ? "light" : "dark";
+                localStorage.setItem("vanishai_theme", nextTheme);
+                applyTheme(nextTheme);
+            });
+        }
+
+        // Listen for OS scheme changes if user hasn't set manual override
+        if (window.matchMedia) {
+            window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+                if (!localStorage.getItem("vanishai_theme")) {
+                    applyTheme(e.matches ? "dark" : "light");
+                }
+            });
+        }
+    }
+
+    // ---------------------------------------------------------------------
     // Init
     // ---------------------------------------------------------------------
     function init() {
+        initThemeToggle();
         initUploadHandlers();
         initToolbarHandlers();
         initCompareSlider();
         initResultHandlers();
         initExtraDelightFeatures();
-        initBatchProcessing();
         initAdvancedComparison();
         initUsageDashboardAndHistory();
 

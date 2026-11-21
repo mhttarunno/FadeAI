@@ -1,11 +1,10 @@
 {
-  "total_processed": 12,
-  "objects_removed": 7,
-  "backgrounds_removed": 2,
-  "objects_detected": 2,
-  "images_enhanced": 1,
-  "batch_processed": 0,
-  "total_processing_seconds": 445.05,
-  "avg_processing_time": 37.09,
-  "last_updated": "2026-11-11 23:40:52"
+    "total_processed":  13,
+    "objects_removed":  7,
+    "backgrounds_removed":  2,
+    "objects_detected":  2,
+    "images_enhanced":  1,
+    "total_processing_seconds":  660.87,
+    "avg_processing_time":  50.84,
+    "last_updated":  "2026-11-15 00:26:24"
 }

@@ -26,7 +26,6 @@ DEFAULT_STATS = {
     "backgrounds_removed": 0,
     "objects_detected": 0,
     "images_enhanced": 0,
-    "batch_processed": 0,
     "total_processing_seconds": 0.0,
     "avg_processing_time": 0.0,
     "last_updated": None,
@@ -100,7 +99,6 @@ def record_action(
                 "remove_background": "backgrounds_removed",
                 "detect_objects": "objects_detected",
                 "enhance_image": "images_enhanced",
-                "batch_process": "batch_processed",
             }
             stat_key = action_key_map.get(action)
             if stat_key:
