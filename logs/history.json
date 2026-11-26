@@ -1,17 +1,1 @@
-[
-  {
-    "id": "hist_1794680784130",
-    "timestamp": 1794680784.1300113,
-    "formatted_time": "Nov 15, 2026 12:26 AM",
-    "action": "batch_process",
-    "original_filename": "2_images",
-    "result_filename": "964a319dd4b0_batch_remove_background_1794680783.zip",
-    "original_url": "/static/uploads/2_images",
-    "result_url": "/static/results/964a319dd4b0_batch_remove_background_1794680783.zip",
-    "elapsed_seconds": 215.82,
-    "metadata": {
-      "operation": "remove_background",
-      "count": 2
-    }
-  }
-]
+[]
