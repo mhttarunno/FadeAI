@@ -1,22 +1,19 @@
 """
-vanishai.py
------------
-Flask application entrypoint for VanishAI - Intelligent Object Removal & AI Photo Studio.
+fadeai.py
+---------
+Flask application entrypoint for FadeAI - Intelligent Object Removal & AI Photo Studio.
 
 Routes:
-    GET  /                            -> main UI (upload, canvas editor, results, dashboard)
-    POST /api/upload                  -> upload + validate source image
-    POST /api/remove-object           -> brush/lasso AI inpainting
-    POST /api/detect-objects          -> smart object detection (COCO 80 categories)
-    POST /api/remove-background       -> background remover (transparent PNG)
-    POST /api/enhance-image           -> 2x/4x super-resolution, sharpen & denoise
-    GET  /api/history                 -> recent editing history
-    POST /api/history/save            -> save history item
-    POST /api/history/clear           -> clear all editing history
-    POST /api/history/delete          -> delete single history item
-    GET  /api/stats                   -> usage dashboard metrics
-    GET  /api/download/<f>            -> download result / zip file
-    GET  /api/health                  -> readiness & device health check
+    GET  /                      -> main UI (upload, canvas editor, results, dashboard)
+    POST /api/upload            -> upload + validate source image
+    POST /api/remove-object     -> brush/lasso AI inpainting
+    POST /api/detect-objects    -> smart object detection (COCO 80 categories)
+    POST /api/remove-background -> background remover (transparent PNG)
+    POST /api/enhance-image     -> 2x/4x super-resolution, sharpen & denoise
+    GET  /api/stats             -> usage dashboard metrics
+    GET  /api/download/<f>      -> download result image
+    GET  /api/health            -> readiness & device health check
+    GET  /favicon.ico           -> clean 204 response
 """
 
 import os
@@ -42,13 +39,7 @@ from config import config_map
 from services.background_service import remove_background
 from services.detection_service import detect_objects
 from services.enhancement_service import enhance_image
-from services.history_and_stats_service import (
-    clear_history,
-    delete_history_item,
-    get_history,
-    get_stats,
-    record_action,
-)
+from services.stats_service import get_stats, record_action
 from services.inpainting_service import InpaintingService
 from utils.file_utils import cleanup_old_files, save_upload
 from utils.logger import get_logger
@@ -90,33 +81,50 @@ def create_app(env: str = None) -> Flask:
 
         return None
 
+    @app.before_request
+    def before_request():
+        try:
+            cleanup_old_files(app.config["UPLOAD_FOLDER"], max_age_hours=24)
+            cleanup_old_files(app.config["RESULT_FOLDER"], max_age_hours=24)
+        except Exception as exc:
+            logger.warning("Cleanup old files warning: %s", exc)
+
     # ------------------------------------------------------------------
-    # Page routes
+    # Frontend Routes
     # ------------------------------------------------------------------
 
     @app.route("/")
     def index():
-        return render_template("index.html")
+        """Render the single-page FadeAI studio."""
+        return render_template(
+            "index.html",
+            app_name=app.config.get("APP_NAME", "FadeAI"),
+            max_upload_size_mb=app.config.get("MAX_CONTENT_LENGTH", 16 * 1024 * 1024) // (1024 * 1024),
+            supported_extensions=sorted(list(app.config.get("ALLOWED_EXTENSIONS", {"jpg", "jpeg", "png", "webp"}))),
+            backend=app.config.get("INPAINT_BACKEND", "lama"),
+        )
 
     # ------------------------------------------------------------------
-    # Core Inpainting & Upload
+    # API: Image Upload & Validation
     # ------------------------------------------------------------------
 
     @app.route("/api/upload", methods=["POST"])
     def upload_image():
-        """Validate and store an uploaded source image; return its URL/id."""
+        """Accepts a single photo upload, validates format/dimensions, and stores it."""
+        if "image" not in request.files:
+            return jsonify({"success": False, "error": "No image file provided in request."}), 400
+
+        file = request.files["image"]
+        if not file or file.filename == "":
+            return jsonify({"success": False, "error": "No file selected."}), 400
+
         try:
-            file_storage = request.files.get("image")
-            validate_image_file(
-                file_storage,
-                allowed_extensions=app.config["ALLOWED_EXTENSIONS"],
-                max_bytes=app.config["MAX_CONTENT_LENGTH"],
-            )
+            allowed = app.config.get("ALLOWED_EXTENSIONS", {"jpg", "jpeg", "png", "webp"})
+            max_mb = app.config.get("MAX_CONTENT_LENGTH", 16 * 1024 * 1024) / (1024 * 1024)
+            validate_image_file(file, allowed, max_size_mb=max_mb)
 
-            cleanup_old_files(app.config["UPLOAD_FOLDER"], app.config["FILE_RETENTION_MINUTES"])
-            cleanup_old_files(app.config["RESULT_FOLDER"], app.config["FILE_RETENTION_MINUTES"])
-
-            saved_path = save_upload(file_storage, app.config["UPLOAD_FOLDER"])
+            dest_folder = Path(app.config["UPLOAD_FOLDER"])
+            saved_path = save_upload(file, dest_folder)
 
             return jsonify(
                 {
@@ -125,37 +133,45 @@ def create_app(env: str = None) -> Flask:
                     "url": f"/static/uploads/{saved_path.name}",
                 }
             )
+        except ValidationError as val_err:
+            return jsonify({"success": False, "error": str(val_err)}), 400
+        except Exception as exc:
+            logger.error("Upload error:\n%s", traceback.format_exc())
+            return jsonify({"success": False, "error": "An error occurred while saving the upload."}), 500
 
-        except ValidationError as exc:
-            logger.warning("Upload validation failed: %s", exc)
-            return jsonify({"success": False, "error": str(exc)}), 400
-        except RequestEntityTooLarge:
-            return jsonify({"success": False, "error": "Uploaded file exceeds the size limit."}), 413
-        except Exception:
-            logger.error("Unexpected error during upload:\n%s", traceback.format_exc())
-            return jsonify({"success": False, "error": "An unexpected server error occurred."}), 500
+    # ------------------------------------------------------------------
+    # Feature: Object Removal (Inpainting)
+    # ------------------------------------------------------------------
 
     @app.route("/api/remove-object", methods=["POST"])
     def remove_object_route():
-        """Run AI inpainting on a previously-uploaded image using a drawn mask."""
+        """Core AI inpainting engine applying mask to remove objects."""
         start_time = time.time()
         try:
-            payload = request.get_json(silent=True) or {}
-            filename = payload.get("filename")
-            mask_data_url = payload.get("mask")
+            data = request.get_json(silent=True) or {}
+            filename = data.get("filename")
+            mask_data_url = data.get("mask")
 
-            resolved = _resolve_image_path(filename)
-            if not resolved:
-                return jsonify({"success": False, "error": "Source image not found. Please re-upload."}), 404
+            if not filename or not mask_data_url:
+                return jsonify({"success": False, "error": "Both 'filename' and 'mask' data are required."}), 400
+
+            resolved_path = _resolve_image_path(filename)
+            if not resolved_path:
+                return jsonify({"success": False, "error": f"Image file '{filename}' not found."}), 404
 
             mask_bytes = decode_base64_mask(mask_data_url)
             validate_mask_bytes(mask_bytes)
 
-            result_path, result_filename = inpainting_service.remove_object(resolved, mask_bytes)
+            results_dir = Path(app.config["RESULT_FOLDER"]).resolve()
+            result_path, result_filename = inpainting_service.remove_object(
+                image_path=resolved_path,
+                mask_bytes=mask_bytes,
+                result_folder=results_dir,
+            )
 
             elapsed = round(time.time() - start_time, 2)
-            record_action("remove_object", filename, result_filename, elapsed)
             logger.info("Inpainting request completed in %.2fs", elapsed)
+            record_action("remove_object", filename, result_filename, elapsed)
 
             return jsonify(
                 {
@@ -163,39 +179,35 @@ def create_app(env: str = None) -> Flask:
                     "result_url": f"/static/results/{result_filename}",
                     "result_filename": result_filename,
                     "processing_time_seconds": elapsed,
+                    "backend": app.config["INPAINT_BACKEND"],
                 }
             )
-
-        except ValidationError as exc:
-            logger.warning("Remove-object validation failed: %s", exc)
-            return jsonify({"success": False, "error": str(exc)}), 400
-        except FileNotFoundError:
-            return jsonify({"success": False, "error": "Source image not found. Please re-upload."}), 404
-        except Exception:
-            logger.error("Unexpected error during inpainting:\n%s", traceback.format_exc())
-            return jsonify({"success": False, "error": "AI processing failed. Please try again."}), 500
+        except ValidationError as val_err:
+            return jsonify({"success": False, "error": str(val_err)}), 400
+        except Exception as exc:
+            logger.error("Inpainting failure:\n%s", traceback.format_exc())
+            return jsonify({"success": False, "error": f"Inpainting failed: {str(exc)}"}), 500
 
     # ------------------------------------------------------------------
-    # Feature 1: Smart Object Detection
+    # Feature: Smart Object Detection
     # ------------------------------------------------------------------
 
     @app.route("/api/detect-objects", methods=["POST"])
     def detect_objects_route():
-        """Detect common objects in the image (people, cars, animals, etc.)."""
+        """Runs FasterRCNN / COCO detector to locate objects."""
         start_time = time.time()
         try:
             payload = request.get_json(silent=True) or {}
             filename = payload.get("filename")
-            threshold = float(payload.get("threshold", 0.40))
 
             resolved = _resolve_image_path(filename)
             if not resolved:
                 return jsonify({"success": False, "error": "Image not found."}), 404
 
             objects = detect_objects(
-                resolved,
-                score_threshold=threshold,
-                device=app.config.get("DEVICE", "cpu"),
+                image_path=resolved,
+                confidence_threshold=0.35,
+                max_dimension=app.config.get("MAX_IMAGE_DIMENSION", 2048),
             )
 
             elapsed = round(time.time() - start_time, 2)
@@ -214,7 +226,7 @@ def create_app(env: str = None) -> Flask:
             return jsonify({"success": False, "error": f"Object detection failed: {str(exc)}"}), 500
 
     # ------------------------------------------------------------------
-    # Feature 2: Background Remover
+    # Feature: Background Remover
     # ------------------------------------------------------------------
 
     @app.route("/api/remove-background", methods=["POST"])
@@ -252,7 +264,7 @@ def create_app(env: str = None) -> Flask:
             return jsonify({"success": False, "error": "Background removal failed. Please try again."}), 500
 
     # ------------------------------------------------------------------
-    # Feature 3: AI Image Enhancement
+    # Feature: AI Image Enhancement
     # ------------------------------------------------------------------
 
     @app.route("/api/enhance-image", methods=["POST"])
@@ -298,54 +310,8 @@ def create_app(env: str = None) -> Flask:
             return jsonify({"success": False, "error": "Image enhancement failed."}), 500
 
     # ------------------------------------------------------------------
-    # Features 7 & 10: History & Usage Dashboard
+    # Feature: Usage Dashboard
     # ------------------------------------------------------------------
-
-    @app.route("/api/history", methods=["GET"])
-    def get_history_route():
-        """Retrieve recent project editing history."""
-        limit = int(request.args.get("limit", 20))
-        items = get_history(limit=limit)
-        return jsonify({"success": True, "history": items})
-
-    @app.route("/api/history/save", methods=["POST"])
-    def save_history_route():
-        """Manually save or label an item in history."""
-        payload = request.get_json(silent=True) or {}
-        action = payload.get("action", "custom_edit")
-        orig = payload.get("original_filename", "")
-        res = payload.get("result_filename", "")
-        meta = payload.get("metadata", {})
-        entry = record_action(action, orig, res, 0.0, meta)
-        return jsonify({"success": True, "entry": entry})
-
-    @app.route("/api/history/clear", methods=["POST"])
-    def clear_history_route():
-        """Clear all entries from the editing history."""
-        try:
-            success = clear_history()
-            if success:
-                return jsonify({"success": True, "message": "History cleared successfully."})
-            return jsonify({"success": False, "error": "Failed to clear history."}), 500
-        except Exception as exc:
-            logger.error("Failed to clear history: %s", exc)
-            return jsonify({"success": False, "error": str(exc)}), 500
-
-    @app.route("/api/history/delete", methods=["POST"])
-    def delete_history_item_route():
-        """Delete a single item from the editing history."""
-        try:
-            payload = request.get_json(silent=True) or {}
-            item_id = payload.get("id")
-            if not item_id:
-                return jsonify({"success": False, "error": "Item ID is required."}), 400
-            success = delete_history_item(item_id)
-            if success:
-                return jsonify({"success": True, "message": "Item deleted from history."})
-            return jsonify({"success": False, "error": "Failed to delete history item."}), 500
-        except Exception as exc:
-            logger.error("Failed to delete history item: %s", exc)
-            return jsonify({"success": False, "error": str(exc)}), 500
 
     @app.route("/api/stats", methods=["GET"])
     def get_stats_route():
@@ -359,7 +325,7 @@ def create_app(env: str = None) -> Flask:
 
     @app.route("/api/download/<path:filename>")
     def download_result(filename):
-        """Serve a generated result image or ZIP archive as a downloadable attachment."""
+        """Serve a generated result image as a downloadable attachment."""
         results_dir = Path(app.config["RESULT_FOLDER"]).resolve()
         target = (results_dir / filename).resolve()
 
@@ -386,7 +352,6 @@ def create_app(env: str = None) -> Flask:
                     "smart_object_detection",
                     "background_remover",
                     "image_enhancement",
-                    "editing_history",
                     "usage_dashboard",
                 ],
             }
@@ -426,5 +391,5 @@ app = create_app()
 if __name__ == "__main__":
     debug_mode = app.config.get("DEBUG", False)
     port = int(os.environ.get("PORT", 5000))
-    logger.info("Starting VanishAI app on port %d (debug=%s)", port, debug_mode)
+    logger.info("Starting FadeAI app on port %d (debug=%s)", port, debug_mode)
     app.run(host="0.0.0.0", port=port, debug=debug_mode, use_reloader=False)

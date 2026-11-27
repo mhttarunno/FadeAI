@@ -111,10 +111,6 @@
 
         statsModalBtn: document.getElementById("statsModalBtn"),
         statsModal: document.getElementById("statsModal"),
-        historyDrawerBtn: document.getElementById("historyDrawerBtn"),
-        historyListContainer: document.getElementById("historyListContainer"),
-        clearHistoryBtn: document.getElementById("clearHistoryBtn"),
-        historyCountBadge: document.getElementById("historyCountBadge"),
         themeToggleBtn: document.getElementById("themeToggleBtn"),
     };
 
@@ -344,7 +340,7 @@
         canvas.on("path:created", (e) => {
             e.path.selectable = false;
             e.path.evented = state.currentTool === "erase";
-            
+
             if (state.currentTool !== "erase") {
                 triggerLiveRemoval();
             }
@@ -409,7 +405,7 @@
             canvas.isDrawingMode = false;
             setObjectsEvented(false);
         }
-        
+
         updateBrushCursor();
     }
 
@@ -434,7 +430,7 @@
         </svg>`;
 
         const cursorUrl = `url("data:image/svg+xml;utf8,${encodeURIComponent(svg)}") ${hotspot} ${hotspot}, auto`;
-        
+
         canvas.freeDrawingCursor = cursorUrl;
         canvas.defaultCursor = cursorUrl;
         canvas.requestRenderAll();
@@ -576,13 +572,13 @@
             state.uploadedFilename = snapshot.filename;
             state.resultUrl = snapshot.imageUrl;
             state.originalImageUrl = snapshot.imageUrl;
-            
+
             const newImg = await loadImageElement(snapshot.imageUrl);
             state.originalImageEl = newImg;
-            
+
             const baseDisplayWidth = state.fabricImage.getScaledWidth();
             const baseDisplayHeight = state.fabricImage.getScaledHeight();
-            
+
             await new Promise((resolve) => {
                 state.fabricImage.setSrc(snapshot.imageUrl, () => {
                     state.fabricImage.set({
@@ -604,7 +600,7 @@
             canvas.renderAll();
             return;
         }
-        
+
         fabric.util.enlivenObjects(objects, (enlivened) => {
             enlivened.forEach((obj) => {
                 obj.selectable = false;
@@ -617,7 +613,7 @@
 
     async function undo() {
         if (!state.undoStack.length) return;
-        
+
         const snapshot = state.undoStack.pop();
         state.redoStack.push(currentSnapshot());
         await restoreSnapshot(snapshot);
@@ -626,7 +622,7 @@
 
     async function redo() {
         if (!state.redoStack.length) return;
-        
+
         const snapshot = state.redoStack.pop();
         state.undoStack.push(currentSnapshot());
         await restoreSnapshot(snapshot);
@@ -669,7 +665,7 @@
         const canvas = state.fabricCanvas;
         newZoom = Math.min(Math.max(newZoom, 1), 4);
         state.zoom = newZoom;
-        
+
         if (point) {
             canvas.zoomToPoint(point, newZoom);
         } else {
@@ -716,7 +712,7 @@
             canvas.isDrawingMode = false;
             el.canvasContainer.classList.add("panning");
             state._panStart = { x: opt.e.clientX, y: opt.e.clientY };
-            
+
             if (opt.e.preventDefault) opt.e.preventDefault();
             if (opt.e.stopPropagation) opt.e.stopPropagation();
         });
@@ -758,7 +754,7 @@
 
         const targetUrl = showBefore ? state.initialImageUrl : state.originalImageUrl;
         const newImg = await loadImageElement(targetUrl);
-        
+
         const maskObjects = canvas.getObjects().filter(o => o !== state.fabricImage);
         maskObjects.forEach(o => o.visible = !showBefore);
 
@@ -771,7 +767,7 @@
 
         const baseDisplayWidth = state.fabricImage.getScaledWidth();
         const baseDisplayHeight = state.fabricImage.getScaledHeight();
-        
+
         state.fabricImage.setSrc(targetUrl, () => {
             state.fabricImage.set({
                 scaleX: baseDisplayWidth / newImg.width,
@@ -797,13 +793,13 @@
             if (el.brushSizeLabel) el.brushSizeLabel.textContent = state.brushSize;
             const sizeBadge = document.getElementById("brushSizeBadge");
             if (sizeBadge) sizeBadge.textContent = `${state.brushSize}px`;
-            
+
             if (el.brushPreview) {
                 const visualSize = Math.max(4, Math.round(state.brushSize * state.zoom));
                 el.brushPreview.style.width = `${visualSize}px`;
                 el.brushPreview.style.height = `${visualSize}px`;
                 el.brushPreview.classList.remove("d-none");
-                
+
                 clearTimeout(brushPreviewTimeout);
                 brushPreviewTimeout = setTimeout(() => {
                     el.brushPreview.classList.add("d-none");
@@ -934,26 +930,26 @@
             state.uploadedFilename = data.result_filename;
             state.resultUrl = data.result_url;
             state.resultFilename = data.result_filename;
-            
+
             // Seamlessly replace the background image
             const newImg = await loadImageElement(data.result_url);
             state.originalImageEl = newImg;
-            
+
             const baseDisplayWidth = state.fabricImage.getScaledWidth();
             const baseDisplayHeight = state.fabricImage.getScaledHeight();
-            
+
             state.fabricImage.setSrc(data.result_url, () => {
                 state.fabricImage.set({
                     scaleX: baseDisplayWidth / newImg.width,
                     scaleY: baseDisplayHeight / newImg.height,
                 });
                 state.originalImageUrl = data.result_url;
-                
+
                 // Remove mask objects from canvas without pushHistory
                 maskObjects.forEach((o) => canvas.remove(o));
-                
+
                 updateHistoryButtons();
-                
+
                 if (wasDrawingMode && state.currentTool === "brush") {
                     canvas.isDrawingMode = true;
                 }
@@ -967,7 +963,7 @@
                             spread: 50,
                             origin: { y: 0.7 }
                         });
-                    } catch (e) {}
+                    } catch (e) { }
                 }
             });
 
@@ -1330,10 +1326,9 @@
     }
 
     // ---------------------------------------------------------------------
-    // Features 7 & 10: Usage Dashboard & Edit History
+    // Feature 7: Usage Dashboard
     // ---------------------------------------------------------------------
-    function initUsageDashboardAndHistory() {
-        // Dashboard
+    function initUsageDashboard() {
         if (el.statsModalBtn) {
             el.statsModalBtn.addEventListener("click", async () => {
                 const statsModalEl = document.getElementById("statsModal");
@@ -1343,63 +1338,6 @@
                     await loadUsageStats();
                 }
             });
-        }
-
-        // History Drawer
-        if (el.historyDrawerBtn) {
-            el.historyDrawerBtn.addEventListener("click", async () => {
-                const historyDrawerEl = document.getElementById("historyDrawer");
-                if (historyDrawerEl && window.bootstrap) {
-                    const drawer = new bootstrap.Offcanvas(historyDrawerEl);
-                    drawer.show();
-                    await loadEditHistory();
-                }
-            });
-        }
-
-        // Clear All History Button
-        if (el.clearHistoryBtn) {
-            el.clearHistoryBtn.addEventListener("click", async () => {
-                const confirmed = window.confirm("Are you sure you want to clear your entire editing history? This cannot be undone.");
-                if (!confirmed) return;
-
-                try {
-                    el.clearHistoryBtn.disabled = true;
-                    const res = await fetch("/api/history/clear", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" }
-                    });
-                    const data = await res.json();
-                    if (!res.ok || !data.success) {
-                        throw new Error(data.error || "Failed to clear history.");
-                    }
-
-                    renderEmptyHistory();
-                    showAlert("Editing history cleared successfully.", "success", 4000);
-                } catch (err) {
-                    console.error("Clear history error:", err);
-                    showAlert(err.message || "Failed to clear history.");
-                } finally {
-                    if (el.clearHistoryBtn) el.clearHistoryBtn.disabled = true;
-                }
-            });
-        }
-    }
-
-    function renderEmptyHistory() {
-        if (el.historyListContainer) {
-            el.historyListContainer.innerHTML = `
-                <div class="text-center py-5 text-muted small">
-                    <i class="bi bi-inbox fs-2 d-block mb-2 text-secondary"></i>
-                    No edit history recorded yet. Upload an image to start!
-                </div>
-            `;
-        }
-        if (el.historyCountBadge) {
-            el.historyCountBadge.textContent = "0 items";
-        }
-        if (el.clearHistoryBtn) {
-            el.clearHistoryBtn.disabled = true;
         }
     }
 
@@ -1431,111 +1369,6 @@
         }
     }
 
-    async function loadEditHistory() {
-        if (!el.historyListContainer) return;
-        try {
-            const res = await fetch("/api/history?limit=25");
-            const data = await res.json();
-            if (!data.success || !data.history.length) {
-                renderEmptyHistory();
-                return;
-            }
-
-            if (el.historyCountBadge) {
-                el.historyCountBadge.textContent = `${data.history.length} items`;
-            }
-            if (el.clearHistoryBtn) {
-                el.clearHistoryBtn.disabled = false;
-            }
-
-            el.historyListContainer.innerHTML = "";
-            data.history.forEach((item) => {
-                const card = document.createElement("div");
-                card.className = "history-item-card d-flex align-items-center justify-content-between gap-2";
-                card.innerHTML = `
-                    <div class="d-flex align-items-center gap-3 text-truncate">
-                        <img src="${item.result_url}" alt="Thumbnail" class="rounded-2" style="width: 48px; height: 48px; object-fit: cover;">
-                        <div class="text-truncate">
-                            <span class="d-block fw-bold small text-dark text-truncate text-capitalize">${item.action.replace(/_/g, ' ')}</span>
-                            <span class="text-muted extra-small" style="font-size: 0.72rem;">${item.formatted_time || ''}</span>
-                        </div>
-                    </div>
-                    <div class="d-flex gap-1 align-items-center">
-                        <button class="btn btn-sm btn-outline-primary rounded-pill px-2 py-1 restore-history-btn" title="Reopen in Studio">
-                            <i class="bi bi-pencil"></i>
-                        </button>
-                        <a href="${item.result_url}" download="${item.result_filename}" class="btn btn-sm btn-outline-secondary rounded-pill px-2 py-1" title="Download">
-                            <i class="bi bi-download"></i>
-                        </a>
-                        <button class="btn btn-sm btn-outline-danger rounded-pill px-2 py-1 delete-history-btn" title="Delete from history">
-                            <i class="bi bi-trash3"></i>
-                        </button>
-                    </div>
-                `;
-
-                const restoreBtn = card.querySelector(".restore-history-btn");
-                if (restoreBtn) {
-                    restoreBtn.addEventListener("click", async () => {
-                        const historyDrawerEl = document.getElementById("historyDrawer");
-                        if (historyDrawerEl && window.bootstrap) {
-                            const inst = bootstrap.Offcanvas.getInstance(historyDrawerEl);
-                            if (inst) inst.hide();
-                        }
-                        setLoading(true, "Restoring previous project...");
-                        state.uploadedFilename = item.result_filename;
-                        state.resultFilename = item.result_filename;
-                        state.resultUrl = item.result_url;
-                        state.initialImageUrl = item.original_url;
-                        state.originalImageUrl = item.result_url;
-                        await initEditor(item.result_url);
-                        showSection("editor");
-                        setLoading(false);
-                    });
-                }
-
-                const deleteBtn = card.querySelector(".delete-history-btn");
-                if (deleteBtn) {
-                    deleteBtn.addEventListener("click", async (e) => {
-                        e.stopPropagation();
-                        try {
-                            deleteBtn.disabled = true;
-                            const delRes = await fetch("/api/history/delete", {
-                                method: "POST",
-                                headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ id: item.id })
-                            });
-                            const delData = await delRes.json();
-                            if (!delRes.ok || !delData.success) {
-                                throw new Error(delData.error || "Failed to delete item.");
-                            }
-
-                            card.style.transition = "all 0.25s ease";
-                            card.style.opacity = "0";
-                            card.style.transform = "translateX(20px)";
-                            setTimeout(() => {
-                                card.remove();
-                                const remainingCards = el.historyListContainer.querySelectorAll(".history-item-card");
-                                if (el.historyCountBadge) {
-                                    el.historyCountBadge.textContent = `${remainingCards.length} items`;
-                                }
-                                if (remainingCards.length === 0) {
-                                    renderEmptyHistory();
-                                }
-                            }, 250);
-                        } catch (err) {
-                            console.error("Delete history error:", err);
-                            showAlert(err.message || "Could not delete history item.");
-                            deleteBtn.disabled = false;
-                        }
-                    });
-                }
-
-                el.historyListContainer.appendChild(card);
-            });
-        } catch (e) {
-            console.error("Failed to load history:", e);
-        }
-    }
     function initExtraDelightFeatures() {
         // 1. Click to try sample images
         document.querySelectorAll("[data-sample]").forEach((card) => {
@@ -1661,7 +1494,7 @@
         }
 
         // Determine current initial theme
-        const savedTheme = localStorage.getItem("vanishai_theme");
+        const savedTheme = localStorage.getItem("fadeai_theme") || localStorage.getItem("vanishai_theme");
         const prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
         const initialTheme = savedTheme || (prefersDark ? "dark" : "light");
         applyTheme(initialTheme);
@@ -1670,7 +1503,7 @@
             toggleBtn.addEventListener("click", () => {
                 const current = document.documentElement.getAttribute("data-theme") || "light";
                 const nextTheme = current === "dark" ? "light" : "dark";
-                localStorage.setItem("vanishai_theme", nextTheme);
+                localStorage.setItem("fadeai_theme", nextTheme);
                 applyTheme(nextTheme);
             });
         }
@@ -1678,7 +1511,7 @@
         // Listen for OS scheme changes if user hasn't set manual override
         if (window.matchMedia) {
             window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
-                if (!localStorage.getItem("vanishai_theme")) {
+                if (!localStorage.getItem("fadeai_theme") && !localStorage.getItem("vanishai_theme")) {
                     applyTheme(e.matches ? "dark" : "light");
                 }
             });
@@ -1696,7 +1529,7 @@
         initResultHandlers();
         initExtraDelightFeatures();
         initAdvancedComparison();
-        initUsageDashboardAndHistory();
+        initUsageDashboard();
 
         if (el.smartDetectBtn) el.smartDetectBtn.addEventListener("click", runObjectDetection);
         if (el.removeBgBtn) el.removeBgBtn.addEventListener("click", runBackgroundRemoval);

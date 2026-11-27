@@ -1,4 +1,3 @@
 @echo off
-echo Starting VanishAI...
-.\venv\Scripts\python.exe vanishai.py
-
+echo Starting FadeAI...
+.\venv\Scripts\python.exe app.py
