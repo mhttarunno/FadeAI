@@ -3,12 +3,13 @@ Flask
 Werkzeug
 gunicorn
 
-# --- Image processing ---------------------------------------------------
+# --- Image processing & Computer Vision ---------------------------------
 Pillow
 opencv-python-headless
 numpy>=2.0.0
+rembg
 
-# --- Deep learning / AI inpainting ---------------------------------------
+# --- Deep learning / AI inpainting & Vision models -----------------------
 torch
 torchvision
 simple-lama-inpainting

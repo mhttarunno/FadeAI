@@ -17,8 +17,9 @@ static/uploads/*
 static/results/*
 !static/results/.gitkeep
 
-# Logs
-logs/*.log
+# Logs & runtime telemetry
+logs/*
+!logs/.gitkeep
 
 # OS / editor
 .DS_Store
